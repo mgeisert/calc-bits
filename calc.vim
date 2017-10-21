@@ -74,7 +74,7 @@ syn match calcSkip	"//"
 " TODO Disable other features of C syntax file that are not part of Calc
 
 " Error highlight any define/if/while/do/etc with trailing "{" on next lines
-syn match calcError	")[ \ta-zA-Z_0-9]*\n[ \n\t\a-zA-Z_0-9]*{"
+syn match calcError	")[ \ta-zA-Z_0-9]*\n[ \n\ta-zA-Z_0-9]*{"
 
 " Add Calc comment syles "##" or "#!" to end of line
 syn region calcComment2 start="##" skip="\\$" end="$" keepend contains=@cCommentGroup,cSpaceError,@Spell
