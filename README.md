@@ -1,2 +1,2 @@
-# calc-bits
-Add-ons to Calc, the C-style arbitrary precision calculator.
+# _calc-bits_
+Add-ons to _Calc_, the C-style arbitrary precision calculator
