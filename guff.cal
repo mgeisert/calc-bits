@@ -229,6 +229,7 @@ define euler4terms(N, pa, pb, pc, pd) {
     /* Given a number N of form 4m+1, search for two ways to express it
        as a sum of squares.  These will be a^2 + b^2 and c^2 + d^2. */
     local counter = 0, found = 0, i = 1, j = N - 1, step = 3, halfN = N // 2;
+    local stderr = files(2);
 
     /* Maybe we'll be lucky in not needing to search for one set */
     if (issq(j)) {
@@ -245,7 +246,7 @@ define euler4terms(N, pa, pb, pc, pd) {
     /* Rather than stepping i by one, step it from square to square */
     for ( /*nothing*/; i < halfN; i += step, j -= step, step += 2) {
 	if (1000000 == ++counter) {
-	    printf("(testing %d)\n", i);
+	    fprintf(stderr, "(testing %d)\r", i);
 	    counter = 0;
 	}
 	if (issq(j)) {
@@ -260,7 +261,7 @@ define euler4terms(N, pa, pb, pc, pd) {
 	    step += 2;
 	    for ( /*nothing*/; i < halfN; i += step, j -= step, step += 2) {
 		if (1000000 == ++counter) {
-		    printf("(testing %d)\n", i);
+		    fprintf(stderr, "(testing %d)\r", i);
 		    counter = 0;
 		}
 		if (issq(j)) {
@@ -403,6 +404,7 @@ define lehman(N) {
        or N if method unsuccessful for given N. */
     local a, b, counter = 0, k, lim, lo, hi;
     local _kN, _4kN, _rootN6 = root(N, 6);
+    local stderr = files(2);
 
     /* Sanity check: N must be >21 and not prime */
     if (guff_ptest(N))
@@ -413,7 +415,7 @@ define lehman(N) {
     lim = ceil(root(N, 3));
     for (k = 1; k <= lim; k++) {
 	if (10000 == ++counter) {
-	    printf("(testing %d out of %d)\n", k, lim);
+	    fprintf(stderr, "(testing %d out of %d)\n", k, lim);
 	    counter = 0;
 	}
 
@@ -844,21 +846,9 @@ print;
 
 	Wikipedia article "Williams' p + 1 algorithm".
 */
-define bitlen(x) {
-    /* Returns the number of bits needed to store nonnegative number x */
-    local n = 0;
-
-    while (x > 0) {
-	x >>= 1;
-	n++;
-    }
-
-    return n ? n : 1;
-}
-
 define lucasseq(B, M, N) {
     /* Returns Mth element of Lucas Sequence characterized by B, modulo N */
-    local i = bitlen(M) - 2, x = B, y = (B^2 - 2) % N;
+    local i = digits(M, 2) - 2, x = B, y = (B^2 - 2) % N;
 
     while (i >= 0) {
 	if (bit(M, i)) {
