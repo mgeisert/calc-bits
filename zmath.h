@@ -304,6 +304,7 @@ E_FUNC void fitzprint(ZVALUE, long, long);
 E_FUNC void zmuli(ZVALUE z, long n, ZVALUE *res);
 E_FUNC long zdivi(ZVALUE z, long n, ZVALUE *res);
 E_FUNC long zmodi(ZVALUE z, long n);
+E_FUNC HALF zmodu(ZVALUE z, HALF n);
 E_FUNC void zadd(ZVALUE z1, ZVALUE z2, ZVALUE *res);
 E_FUNC void zsub(ZVALUE z1, ZVALUE z2, ZVALUE *res);
 E_FUNC void zmul(ZVALUE z1, ZVALUE z2, ZVALUE *res);

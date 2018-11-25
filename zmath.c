@@ -1215,6 +1215,41 @@ zmodi(ZVALUE z, long n)
 
 
 /*
+ * Calculate the mod of an integer by a small unsigned number.
+ * This is only defined for small positive moduli.
+ */
+HALF
+zmodu(ZVALUE z, HALF n)
+{
+	register HALF *h1;
+	FULL val;
+	long len;
+
+	if (n == 0) {
+		math_error("Division by zero");
+		/*NOTREACHED*/
+	}
+	if (ziszero(z) || (n == 1))
+		return 0;
+	if (zisone(z))
+		return 1;
+
+	/*
+	 * The modulus is a small unsigned number, so we can do this quickly.
+	 */
+        len = z.len;
+        h1 = z.v + len;
+        val = 0;
+        while (len-- > 0)
+                val = ((val << BASEB) + ((FULL) *--h1)) % n;
+        if (val && z.sign)
+                val = n - val;
+        return (HALF) val;
+}
+
+
+
+/*
  * Return whether or not one number exactly divides another one.
  * Returns TRUE if division occurs with no remainder.
  * z1 is the number to be divided by z2.

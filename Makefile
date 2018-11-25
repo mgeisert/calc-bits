@@ -899,7 +899,7 @@ CALCPAGER= less
 #
 #DEBUG= -O3
 #DEBUG= -O3 -g
-DEBUG= -O3 -g3
+DEBUG= -O3 -g3 -march=native -mtune=native
 #DEBUG= -O3 -ipa
 #DEBUG= -O3 -g3 -ipa
 

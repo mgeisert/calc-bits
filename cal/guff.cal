@@ -294,7 +294,7 @@ define euler_(N) {
 	return isqrt(N);
 
     /* Euler's method can only work on numbers of form 4m+1 */
-    if (1 != N%4)
+    if (1 != N % 4)
 	return 0;
 
     t = euler4terms(N, &a, &b, &c, &d);
@@ -415,7 +415,7 @@ define lehman(N) {
     lim = ceil(root(N, 3));
     for (k = 1; k <= lim; k++) {
 	if (10000 == ++counter) {
-	    fprintf(stderr, "(testing %d out of %d)\n", k, lim);
+	    fprintf(stderr, "(testing %d out of %d)\r", k, lim);
 	    counter = 0;
 	}
 
@@ -672,7 +672,7 @@ define rho(N_) {
     /* Returns one factor of N if possible,
        or 0 for invalid N,
        or 1 for prime N. */
-    local a, s, U, V g;
+    local a, s, U, V, g;
 
     /* Sanity check: N must be >4 and not prime */
     if (guff_ptest(N_))
@@ -1065,7 +1065,8 @@ define sqrtmodpe(a, p, e) {
 }
 
 define sqrtmodp(a, p) {
-/*	Returns 'sqrt(a) mod p' where p is a prime, which is most
+/*
+	Returns 'sqrt(a) mod p' where p is a prime, which is most
 	emphatically not the same thing as sqrt(a) then mod by p.
 
 	Algorithm due to A. Tonelli, 1891; presented as Algorithm 2.3.8 in
@@ -1212,6 +1213,8 @@ retry:
 		a[j] = int(xx);
 		p[j] = a[j] * p[j - 1] + p[j - 2];
 		q[j] = a[j] * q[j - 1] + q[j - 2];
+		xx = 1 / (xx - a[j]);
+
 		if (q[j] > _rootN4)
 		    break;
 		if (isodd(j))
@@ -1225,8 +1228,6 @@ retry:
 		    if (f != 1 && f != N)
 			return f;
 		}
-
-		xx = 1 / (xx - a[j]);
 	    }
 	}
 
@@ -1334,21 +1335,26 @@ define hart480(N) {
     if (guff_ptest(N))
 	return 1;
 
-    while (2 == factor(N)) {
+    /* Sanity check: N must not be divisible by 2, 3, or 5 */
+    while (0 == N % 2) {
 	print 2;	
 	N /= 2;
     }
-    while (3 == factor(N)) {
+    while (0 == N % 3) {
 	print 3;
 	N /= 3;
     }
-    while (5 == factor(N)) {
+    while (0 == N % 5) {
 	print 5;
 	N /= 5;
     }
 
     if (N == 1)
 	return 1;
+
+    if (guff_ptest(N))
+	return 1;
+
     N480 = N * 480;
 
 ##  lim = floor(1.50 * root(N480, 3)); ## lim "somewhat larger" than N^(1/3)
