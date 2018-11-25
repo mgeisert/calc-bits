@@ -1,0 +1,1470 @@
+/*
+	guff.cal
+	Grand Unified Factorization Framework
+	Copyright © 2018 Mark A. Geisert
+
+	This Calc script supplies implementations of many of the simpler
+	integer factorization methods.
+
+	For each method, denoted by "xxx", there is a function named xxx()
+	implementing the core of the algorithm that typically returns just
+	one factor.
+
+	Each method also has a driver function named xxxfactor() that does
+	any preliminary argument reduction and vetting, and will attempt to
+	completely factorize a number N using only the given method.  Each
+	xxxfactor() function requires just a single argument: the integer
+	to factorize.
+
+	The xxxfactor() driver functions and their methods are:
+		tdvfactor()	trial division, very old
+		fmtfactor()	Fermat, ca. 1643
+		elrfactor()	Euler, ca. 1745
+	NOT YET	cfrfactor()	Lehmer/Powers continued fraction, 1931
+	NOT YET	shkfactor()	Shanks first, 1971
+		lmnfactor()	Lehman, 1974
+	NOT YET	lmrfactor()	Lehmer/Lehmer, 1974
+		pm1factor()	Pollard p-1, 1974
+		sqffactor()	Shanks square forms, 1975
+		rhofactor()	Pollard rho, 1975
+		brofactor()	Brent improved rho, 1980
+	NOT YET	dxnfactor()	Dixon, 1981
+		pp1factor()	Williams p+1, 1982
+	not simple enough...    Pomerance quadratic sieve, 1982
+	not simple enough...    Lenstra elliptic curve method, 1987
+	not simple enough...    Lenstra/Lenstra number field sieve, 1993
+		mk3factor()	McKee improved Euler, 1996
+		mk4factor()	McKee improved Fermat, 1999
+		hrtfactor()	Hart one line, 2012
+
+	These drivers all display any discovered factors as they are found
+	and return any unfactored result.  For example, if you call
+	rhofactor(N) you will probably see N's factors displayed; the result
+	returned will be one of:
+
+	    0   indicating N was not valid input for the method, or
+	    1   indicating factorization has been completed, or
+	  num   indicating the returned number is known to be composite.
+
+	Factors displayed are usually prime factors, but may be displayed in
+	arbitrary sequence, i.e. not necessarily in numerically increasing
+	order.  Some xxxfactor() functions are unable to factorize N all the
+	way down to prime factors due to limitations of the factoring method.
+
+	Progress messages may be displayed; they will start with "(" to be
+	easily recognizable as such.
+*/
+################################################################################
+/*
+	Prime tester used by all other driver functions herein.
+*/
+define guff_ptest(N) {
+    local p;
+
+    if (isnull(N)) {
+	print "missing the argument to be factorized";
+	abort;
+    }
+    if (!isreal(N)) {
+	print "ptest arg:", N, "is not real";
+	abort;
+    }
+
+    p = ptest(N); ## Pretty fast but might say 'prime' for a pseudoprime.
+    if (p)
+	p = ptest(N, 20); ## This is much less likely to do that.
+
+    return p;
+}
+################################################################################
+/*
+	Common argument validator used by all driver functions herein.
+*/
+define guff_validate(N) {
+    if (N < 2 || (!isint(N)))
+	return 0;
+
+    while (iseven(N)) {
+	print 2;
+	N /= 2;
+    }
+
+    if (guff_ptest(N)) {
+	if (N > 1)
+	    print N;
+	return 1;
+    }
+
+    return N;
+}
+print;
+################################################################################
+/*
+	trial division method; very old but somewhat streamlined here.
+
+	Called using one of two patterns:
+	tdvfactor(N)    - Completely factorizes N via trial division.  This
+	                  pattern is typically used manually.
+
+	tdvfactor(N, B) - Factorizes N via trial division by all prime divisors
+	                  up to the given limit B, then returns any cofactor
+	                  whether prime or composite.  This pattern is
+	                  typically used by several other factoring functions
+	                  herein that start with a trial division phase.
+*/
+define tdvfactor(N, B) {
+    /* Factorizes N exclusively via trial division by primes */
+    local f = 1, p, quiet = 1, _32 = 2^32-1, t0 = runtime();
+
+    if (2 > (N = guff_validate(N)))
+	return N;
+
+    if (isnull(B)) {
+	B = isqrt(N);
+	quiet = 0;
+    }
+
+    /* Use factor() for as long as it works; less overhead than stepping */
+    while (f <= B) {
+	p = factor(N, _32, 0);
+	if (p <= 1)
+	    break;
+	print p;
+	f *= p;
+	N /= p;
+	if (guff_ptest(N))
+	    goto done;
+    }
+
+    /* Use nextcand() to step from one likely-prime to the next */
+    while (f <= B) {
+	f = nextcand(f);
+	while (0 == N % f) {
+	    print f;
+	    N /= f;
+	    if (guff_ptest(N))
+		goto done;
+	}
+    }
+
+done:
+    if (quiet)
+	return N;
+
+    if (N > 1)
+	print N;
+    print "(done in", runtime()-t0, "seconds)";
+    return 1;
+}
+print;
+################################################################################
+/*
+	P. de Fermat's "Difference Of Squares" method, ca. 1643.
+
+	Algorithm 5.1.1 from "Prime Numbers - A Computational Perspective"
+	by Richard Crandall and Carl Pomerance, 2nd Ed., 2010.
+
+	Algorithm 5.8 from "The Joy of Factoring"
+	by Samuel S. Wagstaff, Jr., 2013.
+*/
+define fermat(N) {
+    /* Returns one factor of N if possible,
+       or 0 for invalid N,
+       or 1 for prime N. */
+    local r, t, x, y;
+
+    /* Sanity check: N must be odd and not prime */
+    if (guff_ptest(N))
+	return 1;
+    if (iseven(N))
+	return 0;
+
+    x = isqrt(N);
+    t = (2 * x) + 1;
+    r = (x^2) - N;
+
+    /* Main loop */
+    while (!issq(r))
+	r += t, t += 2;
+
+    x = (t - 1) / 2;
+    y = isqrt(r);
+
+    return x - y;
+}
+
+define fmtfactor(N) {
+    /* Factorizes N exclusively by fermat() */
+    local f, t0 = runtime();
+
+    if (2 > (N = guff_validate(N)))
+	return N;
+
+    while (1 < (f = fermat(N))) {
+	if (f == N)
+	    break;
+	if (guff_ptest(f))
+	    print f;
+	else
+	    fmtfactor(f);
+	N /= f;
+    }
+
+    if (N > 1 && N != f)
+	print N;
+    print "(done in", runtime()-t0, "seconds)";
+    return f;
+}
+print;
+################################################################################
+/*
+	L. Euler's "Sum Of Squares" method, ca. 1745.
+
+	Wikipedia article "Euler's factorization method".
+
+	Section 4-5 of "Number Theory And Its History"
+	by Oystein Ore, 1948
+*/
+define euler4terms(N, pa, pb, pc, pd) {
+    /* Given a number N of form 4m+1, search for two ways to express it
+       as a sum of squares.  These will be a^2 + b^2 and c^2 + d^2. */
+    local counter = 0, found = 0, i = 1, j = N - 1, step = 3, halfN = N // 2;
+    local stderr = files(2);
+
+    /* Maybe we'll be lucky in not needing to search for one set */
+    if (issq(j)) {
+	*pc = 1;
+	*pd = isqrt(j);
+	++found;
+	print "(found one set of squares)";
+	i += step;
+	j -= step;
+	step += 2;
+	++counter;
+    }
+
+    /* Rather than stepping i by one, step it from square to square */
+    for ( /*nothing*/; i < halfN; i += step, j -= step, step += 2) {
+	if (1000000 == ++counter) {
+	    fprintf(stderr, "(testing %d)\r", i);
+	    counter = 0;
+	}
+	if (issq(j)) {
+	    *pa = isqrt(i);
+	    *pb = isqrt(j);
+	    ++found; /* found one (or one more) set of squares */
+	    print "(found one set of squares)";
+	    if (found == 2)
+		break;
+	    i += step;
+	    j -= step;
+	    step += 2;
+	    for ( /*nothing*/; i < halfN; i += step, j -= step, step += 2) {
+		if (1000000 == ++counter) {
+		    fprintf(stderr, "(testing %d)\r", i);
+		    counter = 0;
+		}
+		if (issq(j)) {
+		    *pc = isqrt(i);
+		    *pd = isqrt(j);
+		    ++found;
+		    print "(found one set of squares)";
+		    break;
+		}
+	    }
+	    break;
+	}
+    }
+
+    return found;
+}
+
+## Can't name this function "euler" because Calc has a builtin named euler().
+define euler_(N) {
+    /* Returns one factor of N if possible,
+       or 0 for invalid N,
+       or 1 for prime N,
+       or N if method unsuccessful for given N. */
+    local t, A, B, C, D, k, l, m, n, p, q;
+    static a, b, c, d;
+
+    if (guff_ptest(N))
+	return 1;
+    if (issq(N))
+	return isqrt(N);
+
+    /* Euler's method can only work on numbers of form 4m+1 */
+    if (1 != N%4)
+	return 0;
+
+    t = euler4terms(N, &a, &b, &c, &d);
+    if (t != 2)
+	return N;
+
+    /* Arrange for a and c to be odd, b and d to be even */
+    if (iseven(a)) {
+	t = a;
+	a = b; /* odd */
+	b = t; /* even */
+    }
+    if (iseven(c)) {
+	t = c;
+	c = d; /* odd */
+	d = t; /* even */
+    }
+
+    A = a - c; /* even */
+    B = a + c;
+    C = d - b; /* even */
+    D = d + b;
+
+    k = gcd(A, C); /* even */
+    n = gcd(B, D); /* even */
+    l = D / n;
+    m = B / n;
+
+    p = (k / 2)^2 + (n / 2)^2;
+    q = m^2 + l^2;
+
+    return p;
+}
+
+define elrfactor(N) {
+    /* Factorizes N exclusively by euler_() */
+    local f, g, c = 1, t0 = runtime();
+
+    if (2 > (N = guff_validate(N)))
+	return N;
+
+    while (N > 1) {
+	f = euler_(N);
+recheck:
+	if (f == 0) {
+	    c *= N;
+	    break;
+	} else if (f == 1) {
+	    print N;
+	    break;
+	} else {
+	    if (guff_ptest(f)) {
+		print f;
+		N /= f;
+	    } else {
+		g = euler_(f);
+		if (g == f) {
+		    c *= f;
+		    N /= f;
+		    continue;
+		}
+		f = g;
+		goto recheck;
+	    }
+	}
+    }
+
+    print "(done in", runtime()-t0, "seconds)";
+    return (c > 1) ? c : f;
+}
+print;
+################################################################################
+/*
+	D.H. Lehmer & R.E. Powers "Continued Fractions" method, 1931.
+*/
+define cfrac(N) {
+    print "not implemented yet";
+}
+
+define cfrfactor(N) {
+    print "not implemented yet";
+}
+print;
+################################################################################
+/*
+	D. Shanks' first method, 1971.
+*/
+define shanks(N) {
+    print "not implemented yet";
+}
+
+define shkfactor(N) {
+    print "not implemented yet";
+}
+print;
+################################################################################
+/*
+	R. Lehman's method, 1974.
+
+	Algorithm 5.1.2 from "Prime Numbers - A Computational Perspective"
+	by Richard Crandall and Carl Pomerance, 2nd Ed., 2010.
+*/
+define lehman(N) {
+    /* Returns one factor of N if possible,
+       or 0 for invalid N,
+       or 1 for prime N,
+       or N if method unsuccessful for given N. */
+    local a, b, counter = 0, k, lim, lo, hi;
+    local _kN, _4kN, _rootN6 = root(N, 6);
+    local stderr = files(2);
+
+    /* Sanity check: N must be >21 and not prime */
+    if (guff_ptest(N))
+	return 1;
+    if (N <= 21)
+	return 0;
+
+    lim = ceil(root(N, 3));
+    for (k = 1; k <= lim; k++) {
+	if (10000 == ++counter) {
+	    fprintf(stderr, "(testing %d out of %d)\n", k, lim);
+	    counter = 0;
+	}
+
+	_kN = k * N;
+	lo = ceil(2 * sqrt(_kN));
+	hi = floor(lo + (_rootN6 / (4 * sqrt(k))));
+
+	_4kN = 4 * _kN;
+	for (a = lo; a <= hi; a++) {
+	    if (issq(a^2 - _4kN)) {
+		b = sqrt(a^2 - _4kN);
+		return gcd(a + b, N);
+	    }
+	}
+    }
+
+    return N;
+}
+
+define lmnfactor(N, skip) {
+    /* Factorizes N exclusively by lehman() */
+    local f, t0 = runtime();
+
+    if (2 > (N = guff_validate(N)))
+	return N;
+
+    if (isnull(skip)) {
+	print "(trial division phase)";
+	N = tdvfactor(N, floor(root(N, 3)));
+    }
+
+    if (N > 1) {
+	if (isnull(skip))
+	    print "(main factoring loop)";
+	while (1 < (f = lehman(N))) {
+	    if (f == N)
+		break;
+	    if (guff_ptest(f))
+		print f;
+	    else
+		lmnfactor(f, 1);
+	    N /= f;
+	}
+    }
+
+    if (N > 1 && N != f)
+	print N;
+    print "(done in", runtime()-t0, "seconds)";
+    return f;
+}
+print;
+################################################################################
+/*
+	D.H. Lehmer & E. Lehmer's method, 1974.
+*/
+define lehmers(N) {
+    print "not implemented yet";
+}
+
+define lmrfactor(N) {
+    print "not implemented yet";
+}
+print;
+################################################################################
+/*
+	J. Pollard's "p-1" method, 1974.
+
+	Algorithm from "pfactor.cal", part of the Calc source distribution
+	Copyright © 1999 David I. Bell.
+
+	Arguments after N are optional; supply them to tune the algorithm.
+*/
+define pminus1(N, B, ai, af) {
+    /* Returns one factor of N if possible,
+       or 0 for invalid N,
+       or 1 for prime N,
+       or N if method unsuccessful for given N. */
+    local a, k, i, d;
+
+    /* Sanity check: N must not be prime */
+    if (guff_ptest(N))
+	return 1;
+
+    if (isnull(B))
+	B = 1000;
+    if (isnull(ai))
+	ai = 2;
+    if (isnull(af))
+	af = ai + 20;
+
+    k = lcmfact(B);
+    d = lfactor(N, B);
+    if (d > 1)
+	return d;
+
+    for (a = ai; a <= af; a++) {
+	i = pmod(a, k, N);
+	d = gcd(i - 1, N);
+	if ((d > 1) && (d != N))
+	    return d;
+    }
+
+    return N;
+}
+
+define pm1factor(N) {
+    /* Factorizes N exclusively by pminus1() */
+    local f, g, t0 = runtime();
+
+    if (2 > (N = guff_validate(N)))
+	return N;
+
+    while (1 < (f = pminus1(N))) {
+	if (f == N)
+	    break;
+	if (guff_ptest(f))
+	    print f;
+	else {
+	    g = pminus1(f);
+	    if (g == f)
+		print f;
+	    else
+		f = g;
+	}
+	N /= f;
+    }
+
+    if (N > 1 && N != f)
+	print N;
+    print "(done in", runtime()-t0, "seconds)";
+    return f;
+}
+print;
+################################################################################
+/*
+	D. Shanks' "Square Forms" method, 1975.
+
+	Algorithms 6.25 and 6.26 from "The Joy of Factoring"
+	by Samuel S. Wagstaff, Jr., 2013.
+
+	"Square Form Factorization"
+	by Jason E. Gower and Samuel S. Wagstaff, Jr., 2007.
+
+	Wikipedia article "Shanks' square forms factorization".
+*/
+define squfof(N) {
+    /* Returns one factor of N if possible,
+       or 0 for invalid N,
+       or 1 for prime N,
+       or N if method unsuccessful for given N. */
+    local b, B, D, i, k, L, multiplier, P, Po, Pprev, q, Q, Qprev, r, s;
+
+    /* Sanity check: N must be >1 and not prime */
+    if (guff_ptest(N))
+	return 1;
+    if (N <= 1)
+	return 0;
+
+    s = floor(sqrt(N));
+    if (N == s^2)
+	return s;
+
+    mat multiplier[] = {1, 3, 5, 7, 11, 3*5, 3*7, 3*11, 5*7, 5*11,
+		        7*11, 3*5*7, 3*5*11, 3*7*11, 5*7*11, 3*5*7*11};
+
+    for (k = 0; k < size(multiplier); k++) {
+	D = multiplier[k] * N;
+	Po = Pprev = P = floor(sqrt(D));
+	Qprev = 1;
+	Q = D - (Po^2);
+	if (Q == 0)	##XXX seems to be necessary
+	    continue;	##XXX
+	L = floor(2 * sqrt(2 * s));
+	B = 3 * L;
+
+	for (i = 2 ; i < B ; i++) {
+	    b = floor((Po + P) / Q);
+	    P = (b * Q) - P;
+	    q = Q;
+	    Q = Qprev + (b * (Pprev - P));
+##XXX replace the next 3 lines with faster version after them
+##XXX	    r = floor(sqrt(Q));
+##XXX	    if (iseven(i) && (Q == (r^2)))
+##XXX		break;
+	    if (iseven(i) && issq(Q)) {
+		r = isqrt(Q);
+		break;
+	    }
+	    Qprev = q;
+	    Pprev = P;
+	};
+
+	if (i >= B)
+	    continue;
+
+	b = floor((Po - P) / r);
+	Pprev = P = (b * r) + P;
+	Qprev = r;
+	Q = (D - (Pprev^2)) / Qprev;
+	i = 0;
+
+	do {
+	    b = floor((Po + P) / Q);
+	    Pprev = P;
+	    P = (b * Q) - P;
+	    q = Q;
+	    Q = Qprev + (b * (Pprev - P));
+	    Qprev = q;
+	    i++;
+	} while (P != Pprev);
+
+	r = gcd(N, Qprev);
+	if ((r != 1) && (r != N))
+	    return r;
+    }
+
+    return N;
+}
+
+define sqffactor(N) {
+    /* Factorizes N exclusively by squfof() */
+    local f, t0 = runtime();
+
+    if (2 > (N = guff_validate(N)))
+	return N;
+
+    while (1 < (f = squfof(N))) {
+	if (f == N)
+	    break;
+	if (guff_ptest(f))
+	    print f;
+	else
+	    sqffactor(f);
+	N /= f;
+    }
+
+    if (N > 1 && N != f)
+	print N;
+    print "(done in", runtime()-t0, "seconds)";
+    return f;
+}
+print;
+################################################################################
+/*
+	J. Pollard's "Rho" method, 1975.
+
+	Algorithm 5.2.1 from "Prime Numbers - A Computational Perspective"
+	by Richard Crandall and Carl Pomerance, 2nd Ed., 2010.
+*/
+static A, N;
+define F(x) = (x^2 + A) % N;
+
+define rho(N_) {
+    /* Returns one factor of N if possible,
+       or 0 for invalid N,
+       or 1 for prime N. */
+    local a, s, U, V g;
+
+    /* Sanity check: N must be >4 and not prime */
+    if (guff_ptest(N_))
+	return 1;
+    if (N_ <= 4)
+	return 0;
+
+    N = N_;
+    /* Choose seeds */
+choose_seeds:
+## In Calc, random() is half-closed; upper limits here are 1+ source material.
+    a = random(1, N - 2);
+    s = random(0, N);
+    U = V = s;
+
+    /* Factor search */
+factor_search:
+    A = a;
+    U = F(U);
+    V = F(V);
+    V = F(V); /* F(V) intentionally invoked twice */
+    g = gcd(U - V, N);
+    if (g == 1)
+	goto factor_search;
+
+    /* Bad seed */
+    if (g == N)
+	goto choose_seeds;
+
+    /* Success */
+    return g;
+}
+
+define rhofactor(N) {
+    /* Factorizes N exclusively by rho() */
+    local f, t0 = runtime();
+
+    if (2 > (N = guff_validate(N)))
+	return N;
+
+    while (1 < (f = rho(N))) {
+	if (f == N)
+	    break;
+	if (guff_ptest(f))
+	    print f;
+	else
+	    rhofactor(f);
+	N /= f;
+    }
+
+    if (N > 1 && N != f)
+	print N;
+    print "(done in", runtime()-t0, "seconds)";
+    return f;
+}
+print;
+################################################################################
+/*
+	R.P. Brent's improvement of Pollard's rho, 1980.
+
+	Final algorithm from "An Improved Monte Carlo Factorization Algorithm"
+	by Richard P. Brent, 1980.
+
+	Web article "Pollard Rho Brent Integer Factorization"
+	https://comeoncodeon.wordpress.com
+			/2010/09/18/pollard-rho-brent-integer-factorization/
+*/
+static N;
+define G(x) = (x^2 + 3) % N;
+
+define brent(N_) {
+    /* Returns one factor of N if possible,
+       or 0 for invalid N,
+       or 1 for prime N,
+       or N if method unsuccessful for given N. */
+    local g = 1, i, k, lim, m = 100, q = 1, r = 1, x, x0 = 0, y, ys;
+
+    /* Sanity check: N must not be prime */
+    if (guff_ptest(N_))
+	return 1;
+
+    N = N_;
+    y = x0;
+
+    do {
+	x = y;
+	for (i = 1; i <= r; i++)
+	    y = G(y);
+
+	k = 0;
+	do {
+	    ys = y;
+	    lim = min(m, r - k);
+	    for (i = 1; i <= lim; i++) {
+		y = G(y);
+		q = (q * abs(x - y)) % N;
+	    }
+
+	    g = gcd(q, N);
+	    k += m;
+	} while (k < r && g <= 1);
+
+	r *= 2;
+    } while (g <= 1);
+
+    if (g == N) {
+	do {
+	    ys = G(ys);
+	    g = gcd(abs(x - ys), N);
+	} while (g <= 1);
+    }
+
+    return g; ## This is either a factor of N, or N itself indicating failure.
+}
+
+define brofactor(N) {
+    /* Factorizes N exclusively by brent() */
+    local f, g, c = 1, t0 = runtime();
+
+    if (2 > (N = guff_validate(N)))
+	return N;
+
+    while (N > 1) {
+	f = brent(N);
+recheck:
+	if (f == 0) {
+	    c *= N;
+	    break;
+	} else if (f == 1) {
+	    print N;
+	    break;
+	} else {
+	    if (guff_ptest(f)) {
+		print f;
+		N /= f;
+	    } else {
+		g = brent(f);
+		if (g == f) {
+		    c *= f;
+		    N /= f;
+		    continue;
+		}
+		f = g;
+		goto recheck;
+	    }
+	}
+    }
+
+    print "(done in", runtime()-t0, "seconds)";
+    return (c > 1) ? c : f;
+}
+print;
+################################################################################
+/*
+	J.D. Dixon's method, 1981.
+*/
+define dixon(N) {
+    print "not implemented yet";
+}
+
+define dxnfactor(N) {
+    print "not implemented yet";
+}
+print;
+################################################################################
+/*
+	H.C. Williams' "p+1" method, 1982.
+
+	"A p+1 method of factoring"
+	by H.C. Williams, 1982.
+
+	Wikipedia article "Williams' p + 1 algorithm".
+*/
+define lucasseq(B, M, N) {
+    /* Returns Mth element of Lucas Sequence characterized by B, modulo N */
+    local i = digits(M, 2) - 2, x = B, y = (B^2 - 2) % N;
+
+    while (i >= 0) {
+	if (bit(M, i)) {
+	    x = (x * y - B) % N;
+	    y = (y ^ 2 - 2) % N;
+	} else {
+	    y = (x * y - B) % N;
+	    x = (x ^ 2 - 2) % N;
+	}
+	i--;
+    }
+
+    return x;
+}
+
+define pplus1(N) {
+    /* Returns one factor of N if possible,
+       or 0 for invalid N,
+       or 1 for prime N,
+       or N if method unsuccessful for given N. */
+    local A = 5, g, i = 0, V;
+
+    if (guff_ptest(N))
+	return 1;
+
+loop:
+    V = A;
+    while (++i <= 10000) {	##XXX larger # doesn't seem to help
+	V = lucasseq(V, i, N);
+	g = gcd(V - 2, N);
+	if (g == 1)
+	    continue;
+	if (g != N) {
+	    printf("(pp1 %d loops)\n", i); ##XXX debugging
+	    return g;
+	}
+    }
+
+    A += 4;
+    if (A >= 40)	##XXX larger # doesn't seem to help
+	return N;
+
+    i = 0;
+    printf("pp1 restart with A: %d)\n", A); ##XXX debugging
+    goto loop;
+}
+
+define pp1factor(N) {
+    /* Factorizes N exclusively by pplus1() */
+    local f, t0 = runtime();
+
+    if (2 > (N = guff_validate(N)))
+	return N;
+
+    while (1 < (f = pplus1(N))) {
+	if (f == N)
+	    break;
+	if (guff_ptest(f))
+	    print f;
+	else
+	    pp1factor(f);
+	N /= f;
+    }
+
+    if (N > 1 && N != f)
+	print N;
+    print "(done in", runtime()-t0, "seconds)";
+    return f;
+}
+print;
+################################################################################
+/*
+	J. McKee's O(N^(1/3)) enhancement of Euler's method, 1996.
+
+	"Turning Euler's Factoring Method Into A Factoring Algorithm",
+	by James McKee, 1996.
+
+	Algorithm 5.6.3 from "Prime Numbers - A Computational Perspective"
+	by Richard Crandall and Carl Pomerance, 2nd Ed., 2010.
+*/
+define mckee3(N) {
+    /* Returns one factor of N if possible,
+       or 0 for invalid N,
+       or 1 for prime N,
+       or N if method unsuccessful for given N. */
+    local x0, d, a, c, i, j, lim, t, u, ulist, v;
+    local _2sqrtaN, _2x0v, _4aN, _4d, _2N, _umod2N;
+
+    /* Sanity check: N must not be prime */
+    if (guff_ptest(N))
+	return 1;
+
+    /* Square test */
+    if (issq(N))
+	return isqrt(N);
+
+    /* Side factorization */
+    x0 = isqrt(N - N^(2 / 3));
+    d = N - x0^2;
+    if (gcd(N, d) > 1)
+	return gcd(N, d);
+    _4d = 4 * d;
+    _2N = 2 * N;
+
+    /* Congruences */
+    lim = floor(2 * sqrt(d / 3));
+    for (a = 1; a <= lim; a++) {
+	ulist = list();
+	_2sqrtaN = 2 * sqrt(a * N);
+	_4aN = 4 * a * N;
+	c = _4aN % _4d;
+
+	for (u = 0; u < _4d; u++) {
+	    if (c == pmod(u, 2, _4d))
+		append(ulist, u);
+	}
+	t = size(ulist);
+
+	for (i = 0; i < t; i++) {
+	    for (j = 0; /*empty*/; j++) {
+		u = ulist[i] + _4d * j;
+		if (u > _2sqrtaN)
+		    break;
+		if ((u % _4d) == (ulist[i] % _4d)) {
+		    v = sqrt((_4aN - (u^2)) / _4d);
+		    if (isint(v)) {
+			_2x0v = 2 * x0 * v;
+			_umod2N = u % _2N;
+			if ((_umod2N !=  _2x0v % _2N) &&
+			    (_umod2N != -_2x0v % _2N))
+			    goto gcd_computation;
+		    }
+		}
+	    }
+	}
+    }
+
+    return N;
+
+    /* GCD computation */
+gcd_computation:
+    return gcd(_2x0v - u, N);
+}
+
+define mk3factor(N, skip) {
+    /* Factorizes N exclusively by mckee3() */
+    local f, t0 = runtime();
+
+    if (2 > (N = guff_validate(N)))
+	return N;
+
+    if (isnull(skip)) {
+	print "(trial division phase)";
+	N = tdvfactor(N, floor(3 * root(N, 3)));
+    }
+
+    if (N > 1) {
+	if (isnull(skip))
+	    print "(main factoring loop)";
+	while (1 < (f = mckee3(N))) {
+	    if (f == N)
+		break;
+	    if (guff_ptest(f))
+		print f;
+	    else
+		mk3factor(f, 1);
+	    N /= f;
+	}
+    }
+
+    if (N > 1 && N != f)
+	print N;
+    print "(done in", runtime()-t0, "seconds)";
+    return f;
+}
+print;
+################################################################################
+/*
+	J. McKee's O(N^(1/4)) enhancement of Fermat's method, 1999.
+
+	"Speeding Fermat's Factoring Method"
+	by James McKee, 1999.
+
+	Section 6.2 of "The Joy Of Factoring"
+	by Samuel S. Wagstaff, Jr., 2013.
+*/
+
+static B, N;
+define Q(x, y) = ((x + (B * y))^2 - (N * y^2));
+
+define sqrtmodpe(a, p, e) {
+/*
+	From a legitimate 'sqrt(a) mod p', returns 'sqrt(a) mod p^e'.
+
+	Algorithm due to A. Tonelli, 1891; quoted on http://mathoverflow.net.
+*/
+    local q, r, x;
+
+    x = sqrtmodp(a, p);
+    if (x == 0 || e < 1)
+	return 0;
+    if (e == 1)
+	return x;
+
+    q = p^e;
+    r = q / p;
+    e = (q - (2 * r) + 1) / 2;
+## replace the following line with something probably faster: 3 lines following
+##  r = ((x^r) * (a^e)) % q;
+    r = pmod(x, r, q);
+    a = pmod(a, e, q);
+    r = (r * a) % q;
+    return (r < (q / 2)) ? r : q - r;
+}
+
+define sqrtmodp(a, p) {
+/*	Returns 'sqrt(a) mod p' where p is a prime, which is most
+	emphatically not the same thing as sqrt(a) then mod by p.
+
+	Algorithm due to A. Tonelli, 1891; presented as Algorithm 2.3.8 in
+	"Prime Numbers - A Computational Perspective",
+	by Richard Crandall and Carl Pomerance, 2nd Ed., 2010.
+*/
+    local A, c, D, d, i, m, s, t, x;
+
+    if (jacobi(a, p) != 1)
+	return 0;
+
+    switch (p % 8) {
+    case 1:
+	## Original C&P code searched randomly for d in [2..p), but this made
+	## it loop forever when no d would work.. so do an orderly search.
+	for (d = 2; d < p; d++)
+	    if (-1 == jacobi(d, p))
+		break;
+	if (d >= p)
+	    return 0;
+
+	s = 1;
+	while (isint((p - 1) / (2^s)))
+	    ++s;
+	--s;
+	t = (p - 1) / 2^s;
+	A = pmod(a, t, p);
+	D = pmod(d, t, p);
+	m = 0;
+	for (i = 0; i < s; i++) {
+## replace the following line with something probably faster: 1 line following
+##	    if ((p - 1) == (((A * D^m)^(2^(s - 1 - i))) % p))
+	    if ((p - 1) == pmod(A * D^m, 2^(s - 1 - i), p))
+		m = m + 2^i;
+	}
+
+## replace the following line with something probably faster: 3 lines following
+##	x = ((a^((t + 1) / 2)) * D^(m / 2)) % p;
+	a = pmod(a, (t + 1) / 2, p);
+	D = pmod(D, m / 2, p);
+	x = (a * D) % p;
+	return x;
+
+    case 3:
+    case 7:
+	a = a % p;
+	x = pmod(a, (p + 1) / 4, p);
+	return x;
+
+    case 5:
+	a = a % p;
+	x = pmod(a, (p + 3) / 8, p);
+	c = pmod(x, 2, p);
+	if (c != (a % p))
+	    x = (x * 2^((p - 1) / 4)) % p;
+	return x;
+    }
+}
+
+define mk4solve(p) {
+    /* Solve Q(x0,1)==0 (mod p^2), where p is a prime, for result list x0. */
+    local p2, r;
+
+    r = sqrtmodpe(N, p, 2);
+    if (r == 0)
+	return list();
+
+    p2 = p^2;
+    return list((r - B) % p2, ((-r) - B) % p2);
+}
+
+define mckee4(N_) {
+    /* Returns one factor of N if possible,
+       or 0 for invalid N,
+       or 1 for prime N,
+       or N if method unsuccessful for given N. */
+    local f, i, lim, m, m2, rr, x0, xx, yy, z2, _rootN4, _rootN4d;
+
+    /* Sanity check: N must not be prime */
+    if (guff_ptest(N_))
+	return 1;
+
+    /* Square test */
+    if (issq(N_))
+	return isqrt(N_);
+
+    N = N_;
+    B = ceil(sqrt(N));
+    _rootN4 = ceil(root(N, 4));
+    _rootN4d = ceil(_rootN4 / 4); ## adjusted, started at /10 per McKee
+
+    m = nextcand(2 * _rootN4); ## McKee says need not be same as tdv limit...
+    lim = 10000; ## try this many primes starting with m
+retry:
+    if (m >= B)
+	return N;
+
+    /* this is Step 1 of the original algorithm of the source paper */
+    x0 = mk4solve(m);
+
+    if (size(x0) != 0) {
+	m2 = m^2;
+
+	/* this is the "greedy variant" of Step 2 */
+	for (i = 0; i < size(x0); i++) {
+	    xx = x0[i];
+	    yy = 1;
+
+	    do {
+		z2 = Q(xx, yy);
+		if (issq(z2)) {
+		    f = gcd(xx + (B * yy) - isqrt(z2), N);
+		    if (f != 1 && f != N)
+			return f;
+		}
+
+		rr = ceil(m2 / xx);
+		xx = (xx * rr) - m2;
+		yy *= rr;
+	    } while (yy < _rootN4d);
+	}
+
+	/* if no luck, fall back to the original Step 2 */
+	for (i = 0; i < size(x0); i++) {
+	    xx = x0[i] / m2;
+
+/*
+	Compute continued fraction approximation of xx
+
+        Algorithm from Shreevatsa R's web page
+        https://shreevatsa.wordpress.com/2011/01/10/
+              not-all-best-rational-approximations-are-the-convergents-
+              of-the-continued-fraction/
+*/
+	    local j, MAX = 15, xm;
+	    local mat a[MAX], p[MAX], q[MAX];
+
+	    /* the first two convergents are 0/1 and 1/0 */
+	    p[0] = 0; q[0] = 1;
+	    p[1] = 1; q[1] = 0;
+
+	    /* the rest of the convergents (and continued fraction)... */
+	    for (j = 2; j < MAX; j++) {
+		a[j] = int(xx);
+		p[j] = a[j] * p[j - 1] + p[j - 2];
+		q[j] = a[j] * q[j - 1] + q[j - 2];
+		if (q[j] > _rootN4)
+		    break;
+		if (isodd(j))
+		    continue;
+
+		/* see if latest even-index p/q can help us */
+		xm = (q[j] * x0[i]) % m2;
+		z2 = Q(xm, q[j]);
+		if (issq(z2)) {
+		    f = gcd(x0[i] + (B * q[j]) - isqrt(z2), N);
+		    if (f != 1 && f != N)
+			return f;
+		}
+
+		xx = 1 / (xx - a[j]);
+	    }
+	}
+
+	/* still no luck; bail on this prime and try the next prime */
+    }
+
+    m = nextcand(m);
+    if (lim--)
+	goto retry; ##XXX maybe lim needs to grow as N grows
+
+    return N;
+}
+
+define mk4wrap(N) {
+    /* Per McKee: try to split N; on fail try to split 3N and don't report 3 */
+    local f = mckee4(N);
+
+    if (f != N)
+	return f;
+
+    f = mckee4(3 * N);
+    if (f < 2)
+	return f; /* error of some kind */
+    if (f == 3)
+	return N; /* 3N trick didn't work */
+    if (f % 3)
+	return f; /* f is not divisible by 3, so 3N trick worked! */
+    return f / 3; /* if f != 3N, 3N trick worked here too */
+}
+
+define mk4factor(N, skip) {
+    /* Factorizes N exclusively by mckee4() */
+    local f, t0 = runtime();
+
+    if (2 > (N = guff_validate(N)))
+	return N;
+
+    if (isnull(skip)) {
+	print "(trial division phase)";
+	N = tdvfactor(N, floor(2 * root(N, 4)));
+    }
+
+    if (N > 1) {
+	if (isnull(skip))
+	    print "(main factoring loop)";
+	while (1 < (f = mk4wrap(N))) {
+	    if (f == N)
+		break;
+	    if (guff_ptest(f))
+		print f;
+	    else
+		mk4factor(f, 1);
+	    N /= f;
+	}
+    }
+
+    if (N > 1 && N != f)
+	print N;
+    print "(done in", runtime()-t0, "seconds)";
+    return f;
+}
+print;
+################################################################################
+/*
+	W.B. Hart's "One-Line" method, 2012.
+
+	Algorithm 5.13 from "The Joy of Factoring"
+	by Samuel S. Wagstaff, Jr., 2013.
+*/
+/* Original Hart algorithm */
+define hart(N) {
+    /* Returns one factor of N if possible,
+       or 0 for invalid N,
+       or 1 for prime N,
+       or N if method unsuccessful for given N. */
+    local i, lim, m, s, t;
+
+    /* Sanity check: N must not be prime */
+    if (guff_ptest(N))
+	return 1;
+
+##  lim = floor(1.50 * root(N, 3)); ## lim to be "somewhat larger" than N^(1/3).
+    lim = N;
+    for (i = 1; i <= lim; i++) {
+	s = ceil(sqrt(N * i));
+	m = pmod(s, 2, N);
+	if (issq(m)) {
+	    t = isqrt(m);
+	    return gcd(s - t, N);
+	}
+    }
+
+    return N;
+}
+
+/* Variant of Hart algorithm that sometimes works when Hart doesn't */
+define hart480(N) {
+    /* Returns one factor of N if possible,
+       or 0 for invalid N,
+       or 1 for prime N,
+       or N if method unsuccessful for given N. */
+    local i, lim, m, N480, s, t;
+
+    /* Sanity check: N must not be prime */
+    if (guff_ptest(N))
+	return 1;
+
+    while (2 == factor(N)) {
+	print 2;	
+	N /= 2;
+    }
+    while (3 == factor(N)) {
+	print 3;
+	N /= 3;
+    }
+    while (5 == factor(N)) {
+	print 5;
+	N /= 5;
+    }
+
+    if (N == 1)
+	return 1;
+    N480 = N * 480;
+
+##  lim = floor(1.50 * root(N480, 3)); ## lim "somewhat larger" than N^(1/3)
+    lim = N;
+    for (i = 1; i <= lim; i++) {
+	s = ceil(sqrt(N480 * i));
+	m = pmod(s, 2, N480);
+	if (issq(m)) {
+	    t = isqrt(m);
+	    return gcd(s - t, N);
+	}
+    }
+
+    return N;
+}
+
+define hrtfactor(N, skip) {
+    /* Factorizes N exclusively by hart() */
+    local f, t0 = runtime();
+
+    if (2 > (N = guff_validate(N)))
+	return N;
+
+    if (issq(N)) {
+	N = isqrt(N);
+	print N;
+    }
+
+    if (isnull(skip)) {
+	print "(trial division phase)";
+	N = tdvfactor(N, floor(root(N, 3)));
+    }
+
+    if (N > 1) {
+	if (isnull(skip))
+	    print "(main factoring loop)";
+	while (1 < (f = hart480(N))) {
+	    if (f == N)
+		break;
+	    if (guff_ptest(f))
+	        print f;
+	    else
+	        hrtfactor(f, 1);
+	    N /= f;
+	}
+    }
+
+    if (N > 1 && N != f)
+	print N;
+    print "(done in", runtime()-t0, "seconds)";
+    return f;
+}
+print;
+################################################################################
+/*
+	The following methods are deemed too complicated for this collection.
+
+	C. Pomerance's quadratic sieve, 1982
+	H.W. Lenstra's elliptic curve method, 1987
+	A.K. Lenstra & H.W. Lenstra's number field sieve, 1993
+*/
+################################################################################
+/*
+	Test all factorization methods with the same input.
+*/
+define guff_tester(N) {
+	print "\ntdv";
+	tdvfactor(N);	## trial division, very old
+
+	print "\nfmt skipped";
+##	fmtfactor(N);	## Fermat, ca. 1643
+
+	print "\nelr skipped";
+##	elrfactor(N);	## Euler, ca. 1745
+
+	print "\ncfr";
+	cfrfactor(N);	## Lehmer/Powers continued fraction, 1931
+
+	print "\nshk";
+	shkfactor(N);	## Shanks first, 1971
+
+	print "\nlmn";
+	lmnfactor(N);	## Lehman, 1974
+
+	print "\nlmr";
+	lmrfactor(N);	## Lehmer/Lehmer, 1974
+
+	print "\npm1";
+	pm1factor(N);	## Pollard p-1, 1974
+
+	print "\nsqf";
+	sqffactor(N);	## Shanks square forms, 1975
+
+	print "\nrho";
+	rhofactor(N);	## Pollard rho, 1975
+
+	print "\nbro";
+	brofactor(N);	## Brent improved rho, 1980
+
+	print "\ndxn";
+	dxnfactor(N);	## Dixon, 1981
+
+	print "\npp1";
+	pp1factor(N);	## Williams p+1, 1982
+
+	/* N/A */	## Pomerance quadratic sieve, 1982
+	/* N/A */	## Lenstra elliptic curve method, 1987
+	/* N/A */	## Lenstra/Lenstra number field sieve, 1993
+
+	print "\nmk3";
+	mk3factor(N);	## McKee improved Euler, 1996
+
+	print "\nmk4";
+	mk4factor(N);	## McKee improved Fermat, 1999
+
+	print "\nhrt";
+	hrtfactor(N);	## Hart one line, 2012
+}
+print;
