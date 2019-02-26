@@ -1,7 +1,7 @@
 /*
 	guff.cal
 	Grand Unified Factorization Framework
-	Copyright © 2018 Mark A. Geisert
+	Copyright © 2018-2019 Mark A. Geisert
 
 	This Calc script supplies implementations of many of the simpler
 	integer factorization methods.
@@ -49,10 +49,10 @@
 	Factors displayed are usually prime factors, but may be displayed in
 	arbitrary sequence, i.e. not necessarily in numerically increasing
 	order.  Some xxxfactor() functions are unable to factorize N all the
-	way down to prime factors due to limitations of the factoring method.
+	way down to prime factors due to limitations of the factorizing method.
 
-	Progress messages may be displayed; they will start with "(" to be
-	easily recognizable as such.
+	Progress messages may be displayed; they will be enclosed in parens
+	as in "( message )" to be easily recognizable as such.
 */
 ################################################################################
 /*
@@ -78,6 +78,18 @@ define guff_ptest(N) {
 }
 ################################################################################
 /*
+	Common factor displayer
+*/
+define guff_print(m, N) {
+    local d = digits(N);
+
+    if (guff_ptest(N))
+	printf("%3s p%d: %d\n", m, d, N);
+    else
+	printf("%3s c%d: %d\n", m, d, N);
+}
+################################################################################
+/*
 	Common argument validator used by all driver functions herein.
 */
 define guff_validate(N) {
@@ -85,13 +97,13 @@ define guff_validate(N) {
 	return 0;
 
     while (iseven(N)) {
-	print 2;
+	guff_print("val", 2);
 	N /= 2;
     }
 
     if (guff_ptest(N)) {
 	if (N > 1)
-	    print N;
+	    guff_print("val", N);
 	return 1;
     }
 
@@ -109,7 +121,7 @@ print;
 	tdvfactor(N, B) - Factorizes N via trial division by all prime divisors
 	                  up to the given limit B, then returns any cofactor
 	                  whether prime or composite.  This pattern is
-	                  typically used by several other factoring functions
+	                  typically used by several other factorizing functions
 	                  herein that start with a trial division phase.
 */
 define tdvfactor(N, B) {
@@ -129,8 +141,8 @@ define tdvfactor(N, B) {
 	p = factor(N, _32, 0);
 	if (p <= 1)
 	    break;
-	print p;
-	f *= p;
+	guff_print("tdv", p);
+	f *= p; ## f is product of all factors so far, not just latest factor
 	N /= p;
 	if (guff_ptest(N))
 	    goto done;
@@ -140,7 +152,7 @@ define tdvfactor(N, B) {
     while (f <= B) {
 	f = nextcand(f);
 	while (0 == N % f) {
-	    print f;
+	    guff_print("tdv", f);
 	    N /= f;
 	    if (guff_ptest(N))
 		goto done;
@@ -152,7 +164,7 @@ done:
 	return N;
 
     if (N > 1)
-	print N;
+	guff_print("tdv", N);
     print "(done in", runtime()-t0, "seconds)";
     return 1;
 }
@@ -204,14 +216,14 @@ define fmtfactor(N) {
 	if (f == N)
 	    break;
 	if (guff_ptest(f))
-	    print f;
+	    guff_print("fmt", f);
 	else
 	    fmtfactor(f);
 	N /= f;
     }
 
     if (N > 1 && N != f)
-	print N;
+	guff_print("fmt", N);
     print "(done in", runtime()-t0, "seconds)";
     return f;
 }
@@ -343,11 +355,11 @@ recheck:
 	    c *= N;
 	    break;
 	} else if (f == 1) {
-	    print N;
+	    guff_print("elr", N);
 	    break;
 	} else {
 	    if (guff_ptest(f)) {
-		print f;
+		guff_print("elr", f);
 		N /= f;
 	    } else {
 		g = euler_(f);
@@ -449,12 +461,12 @@ define lmnfactor(N, skip) {
 
     if (N > 1) {
 	if (isnull(skip))
-	    print "(main factoring loop)";
+	    print "(main factorizing loop)";
 	while (1 < (f = lehman(N))) {
 	    if (f == N)
 		break;
 	    if (guff_ptest(f))
-		print f;
+		guff_print("lmn", f);
 	    else
 		lmnfactor(f, 1);
 	    N /= f;
@@ -462,7 +474,7 @@ define lmnfactor(N, skip) {
     }
 
     if (N > 1 && N != f)
-	print N;
+	guff_print("lmn", N);
     print "(done in", runtime()-t0, "seconds)";
     return f;
 }
@@ -483,7 +495,7 @@ print;
 /*
 	J. Pollard's "p-1" method, 1974.
 
-	Algorithm from "pfactor.cal", part of the Calc source distribution
+	Algorithm from "pollard.cal", part of the Calc source distribution
 	Copyright © 1999 David I. Bell.
 
 	Arguments after N are optional; supply them to tune the algorithm.
@@ -532,11 +544,11 @@ define pm1factor(N) {
 	if (f == N)
 	    break;
 	if (guff_ptest(f))
-	    print f;
+	    guff_print("pm1", f);
 	else {
 	    g = pminus1(f);
 	    if (g == f)
-		print f;
+		guff_print("pm1", f);
 	    else
 		f = g;
 	}
@@ -544,7 +556,7 @@ define pm1factor(N) {
     }
 
     if (N > 1 && N != f)
-	print N;
+	guff_print("pm1", N);
     print "(done in", runtime()-t0, "seconds)";
     return f;
 }
@@ -646,14 +658,14 @@ define sqffactor(N) {
 	if (f == N)
 	    break;
 	if (guff_ptest(f))
-	    print f;
+	    guff_print("sqf", f);
 	else
 	    sqffactor(f);
 	N /= f;
     }
 
     if (N > 1 && N != f)
-	print N;
+	guff_print("sqf", N);
     print "(done in", runtime()-t0, "seconds)";
     return f;
 }
@@ -717,14 +729,14 @@ define rhofactor(N) {
 	if (f == N)
 	    break;
 	if (guff_ptest(f))
-	    print f;
+	    guff_print("rho", f);
 	else
 	    rhofactor(f);
 	N /= f;
     }
 
     if (N > 1 && N != f)
-	print N;
+	guff_print("rho", N);
     print "(done in", runtime()-t0, "seconds)";
     return f;
 }
@@ -802,11 +814,11 @@ recheck:
 	    c *= N;
 	    break;
 	} else if (f == 1) {
-	    print N;
+	    guff_print("bro", N);
 	    break;
 	} else {
 	    if (guff_ptest(f)) {
-		print f;
+		guff_print("bro", f);
 		N /= f;
 	    } else {
 		g = brent(f);
@@ -907,14 +919,14 @@ define pp1factor(N) {
 	if (f == N)
 	    break;
 	if (guff_ptest(f))
-	    print f;
+	    guff_print("pp1", f);
 	else
 	    pp1factor(f);
 	N /= f;
     }
 
     if (N > 1 && N != f)
-	print N;
+	guff_print("pp1", N);
     print "(done in", runtime()-t0, "seconds)";
     return f;
 }
@@ -1007,12 +1019,12 @@ define mk3factor(N, skip) {
 
     if (N > 1) {
 	if (isnull(skip))
-	    print "(main factoring loop)";
+	    print "(main factorizing loop)";
 	while (1 < (f = mckee3(N))) {
 	    if (f == N)
 		break;
 	    if (guff_ptest(f))
-		print f;
+		guff_print("mk3", f);
 	    else
 		mk3factor(f, 1);
 	    N /= f;
@@ -1020,7 +1032,7 @@ define mk3factor(N, skip) {
     }
 
     if (N > 1 && N != f)
-	print N;
+	guff_print("mk3", N);
     print "(done in", runtime()-t0, "seconds)";
     return f;
 }
@@ -1272,12 +1284,12 @@ define mk4factor(N, skip) {
 
     if (N > 1) {
 	if (isnull(skip))
-	    print "(main factoring loop)";
+	    print "(main factorizing loop)";
 	while (1 < (f = mk4wrap(N))) {
 	    if (f == N)
 		break;
 	    if (guff_ptest(f))
-		print f;
+		guff_print("mk4", f);
 	    else
 		mk4factor(f, 1);
 	    N /= f;
@@ -1285,7 +1297,7 @@ define mk4factor(N, skip) {
     }
 
     if (N > 1 && N != f)
-	print N;
+	guff_print("mk4", N);
     print "(done in", runtime()-t0, "seconds)";
     return f;
 }
@@ -1337,15 +1349,15 @@ define hart480(N) {
 
     /* Sanity check: N must not be divisible by 2, 3, or 5 */
     while (0 == N % 2) {
-	print 2;	
+	guff_print("hrt", 2);
 	N /= 2;
     }
     while (0 == N % 3) {
-	print 3;
+	guff_print("hrt", 3);
 	N /= 3;
     }
     while (0 == N % 5) {
-	print 5;
+	guff_print("hrt", 5);
 	N /= 5;
     }
 
@@ -1380,7 +1392,7 @@ define hrtfactor(N, skip) {
 
     if (issq(N)) {
 	N = isqrt(N);
-	print N;
+	guff_print("hrt", N);
     }
 
     if (isnull(skip)) {
@@ -1390,12 +1402,12 @@ define hrtfactor(N, skip) {
 
     if (N > 1) {
 	if (isnull(skip))
-	    print "(main factoring loop)";
+	    print "(main factorizing loop)";
 	while (1 < (f = hart480(N))) {
 	    if (f == N)
 		break;
 	    if (guff_ptest(f))
-	        print f;
+	        guff_print("hrt", f);
 	    else
 	        hrtfactor(f, 1);
 	    N /= f;
@@ -1403,7 +1415,7 @@ define hrtfactor(N, skip) {
     }
 
     if (N > 1 && N != f)
-	print N;
+	guff_print("hrt", N);
     print "(done in", runtime()-t0, "seconds)";
     return f;
 }
