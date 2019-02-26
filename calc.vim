@@ -21,7 +21,7 @@ let c_no_utf  = 1
 runtime! syntax/c.vim
 
 " Add Calc-specific keywords
-syn keyword calcCommand      cd define undefine show help print
+syn keyword calcCommand      cd define undefine show help man print
 syn keyword calcCommand      read write abort quit exit
 syn keyword calcStatement    if else while continue break goto return
 syn keyword calcStatement    do for switch case default
